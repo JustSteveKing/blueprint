@@ -2,40 +2,52 @@
 
 namespace Blueprint;
 
+use Blueprint\Models\Controller;
+use Blueprint\Models\Model;
 use Illuminate\Support\Str;
 
 class Tree
 {
-    private $tree;
-
-    public function __construct(array $tree)
-    {
-        $this->tree = $tree;
-
+    public function __construct(
+        private array $tree,
+        private array $models = [],
+    ) {
         $this->registerModels();
     }
 
-    private function registerModels()
+    private function registerModels(): void
     {
-        $this->models = array_merge($this->tree['cache'] ?? [], $this->tree['models'] ?? []);
+        $this->models = [
+            ...$this->tree['cache'] ?? [],
+            ...$this->tree['models'] ?? []
+        ];
     }
 
-    public function controllers()
+    /**
+     * @return array<int,Controller>
+     */
+    public function controllers(): array
     {
         return $this->tree['controllers'];
     }
 
-    public function models()
+    /**
+     * @return array<int,Model>
+     */
+    public function models(): array
     {
         return $this->tree['models'];
     }
 
-    public function seeders()
+    /**
+     * @return array<int,string>
+     */
+    public function seeders(): array
     {
         return $this->tree['seeders'];
     }
 
-    public function modelForContext(string $context)
+    public function modelForContext(string $context): null|Model
     {
         if (isset($this->models[Str::studly($context)])) {
             return $this->models[Str::studly($context)];
@@ -50,29 +62,38 @@ class Tree
         if (count($matches) === 1) {
             return $this->models[current($matches)];
         }
+
+        return null;
     }
 
-    public function fqcnForContext(string $context)
+    public function fqcnForContext(string $context): string
     {
         if (isset($this->models[$context])) {
             return $this->models[$context]->fullyQualifiedClassName();
         }
 
-        $matches = array_filter(array_keys($this->models), fn ($key) => Str::endsWith($key, '\\' . Str::studly($context)));
+        $matches = array_filter(
+            array_keys($this->models),
+            static fn ($key): bool => Str::endsWith(
+                $key,
+                '\\' . Str::studly($context)
+            )
+        );
 
         if (count($matches) === 1) {
             return $this->models[current($matches)]->fullyQualifiedClassName();
         }
 
         $fqn = config('blueprint.namespace');
+
         if (config('blueprint.models_namespace')) {
             $fqn .= '\\' . config('blueprint.models_namespace');
         }
 
-        return $fqn . '\\' . $context;
+        return "$fqn\\$context";
     }
 
-    public function toArray()
+    public function toArray(): array
     {
         return $this->tree;
     }
