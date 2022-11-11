@@ -13,6 +13,19 @@ class Blueprint
 
     private $generators = [];
 
+    public static function registerLexers(Lexer ...$lexers): Blueprint
+    {
+        $blueprint = new Blueprint();
+
+        foreach ($lexers as $lexer) {
+            $blueprint->registerLexer(
+                lexer: $lexer,
+            );
+        }
+
+        return $blueprint;
+    }
+
     public static function relativeNamespace(string $fullyQualifiedClassName)
     {
         $namespace = config('blueprint.namespace') . '\\';

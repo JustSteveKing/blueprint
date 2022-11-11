@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Blueprint;
 
 use Blueprint\Commands\BuildCommand;
@@ -8,20 +10,23 @@ use Blueprint\Commands\InitCommand;
 use Blueprint\Commands\NewCommand;
 use Blueprint\Commands\PublishStubsCommand;
 use Blueprint\Commands\TraceCommand;
+use Blueprint\Contracts\Generator;
+use Blueprint\Lexers\ConfigLexer;
+use Blueprint\Lexers\ControllerLexer;
+use Blueprint\Lexers\ModelLexer;
+use Blueprint\Lexers\SeederLexer;
+use Blueprint\Lexers\StatementLexer;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Support\DeferrableProvider;
-use Illuminate\Support\Facades\File;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Filesystem\Filesystem;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 
 class BlueprintServiceProvider extends ServiceProvider implements DeferrableProvider
 {
-    /**
-     * Bootstrap the application events.
-     *
-     * @return void
-     */
-    public function boot()
+    public function boot(): void
     {
         if (!defined('STUBS_PATH')) {
             define('STUBS_PATH', dirname(__DIR__) . '/stubs');
@@ -40,70 +45,122 @@ class BlueprintServiceProvider extends ServiceProvider implements DeferrableProv
         ], 'blueprint-stubs');
     }
 
-    /**
-     * Register the service provider.
-     *
-     * @return void
-     */
-    public function register()
+    public function register(): void
     {
         $this->mergeConfigFrom(
             __DIR__ . '/../config/blueprint.php',
             'blueprint'
         );
 
-        File::mixin(new FileMixins());
+        $this->app->make(
+            abstract: Filesystem::class,
+        )->mixin(
+            mixin: new FileMixins(),
+        );
 
-        $this->app->bind('command.blueprint.build', fn ($app) => new BuildCommand($app['files'], app(Builder::class)));
-        $this->app->bind('command.blueprint.erase', fn ($app) => new EraseCommand($app['files']));
-        $this->app->bind('command.blueprint.trace', fn ($app) => new TraceCommand($app['files'], app(Tracer::class)));
-        $this->app->bind('command.blueprint.new', fn ($app) => new NewCommand($app['files']));
-        $this->app->bind('command.blueprint.init', fn ($app) => new InitCommand());
-        $this->app->bind('command.blueprint.stubs', fn ($app) => new PublishStubsCommand());
+        $this->app->bind(
+            abstract: BuildCommand::class,
+            concrete: fn (Application $app): BuildCommand => new BuildCommand(
+                filesystem: $app['files'],
+                builder: $app->make(
+                    abstract: Builder::class,
+                ),
+            ),
+        );
+        $this->app->bind(
+            abstract: EraseCommand::class,
+            concrete: fn (Application $app): EraseCommand => new EraseCommand(
+                filesystem: $app['files'],
+            ),
+        );
+        $this->app->bind(
+            abstract: TraceCommand::class,
+            concrete: fn (Application $app): TraceCommand => new TraceCommand(
+                filesystem: $app['files'],
+                tracer: $app->make(
+                    abstract: Tracer::class,
+                ),
+            ),
+        );
+        $this->app->bind(
+            abstract: NewCommand::class,
+            concrete: fn (Application $app): NewCommand => new NewCommand(
+                filesystem: $app['files'],
+            ),
+        );
+        $this->app->bind(
+            abstract: InitCommand::class,
+            concrete: fn (): InitCommand => new InitCommand(),
+        );
+        $this->app->bind(
+            abstract: PublishStubsCommand::class,
+            concrete: fn () => new PublishStubsCommand(),
+        );
 
-        $this->app->singleton(Blueprint::class, function ($app) {
-            $blueprint = new Blueprint();
-            $blueprint->registerLexer(new \Blueprint\Lexers\ConfigLexer($app));
-            $blueprint->registerLexer(new \Blueprint\Lexers\ModelLexer());
-            $blueprint->registerLexer(new \Blueprint\Lexers\SeederLexer());
-            $blueprint->registerLexer(new \Blueprint\Lexers\ControllerLexer(new \Blueprint\Lexers\StatementLexer()));
+        $this->app->singleton(
+            abstract: Blueprint::class,
+            concrete: function (Application $app): Blueprint {
+                $blueprint = Blueprint::registerLexers(
+                    new ConfigLexer(
+                        app: $app,
+                    ),
+                    new ModelLexer(),
+                    new SeederLexer(),
+                    new ControllerLexer(
+                        statementLexer: new StatementLexer(),
+                    ),
+                );
 
-            foreach (config('blueprint.generators') as $generator) {
-                $blueprint->registerGenerator(new $generator($app['files']));
-            }
+                /**
+                 * @var Generator $generator
+                 */
+                foreach (config('blueprint.generators') as $generator) {
+                    $blueprint->registerGenerator(
+                        generator: new $generator(
+                            filesystem: $app['files'],
+                        ),
+                    );
+                }
 
-            return $blueprint;
-        });
+                return $blueprint;
+            },
+        );
 
-        $this->app->make('events')->listen(CommandFinished::class, function ($event) {
-            if ($event->command == 'stub:publish') {
-                $this->app->make(Kernel::class)->queue('blueprint:stubs');
-            }
-        });
+        $this->app->make(
+            abstract: Dispatcher::class,
+        )->listen(
+            events: CommandFinished::class,
+            listener: function ($event) {
+                if ($event->command === 'stub:publish') {
+                    $this->app->make(
+                        abstract: Kernel::class,
+                    )->queue('blueprint:stubs');
+                }
+            },
+        );
 
         $this->commands([
-            'command.blueprint.build',
-            'command.blueprint.erase',
-            'command.blueprint.trace',
-            'command.blueprint.new',
-            'command.blueprint.init',
-            'command.blueprint.stubs',
+            BuildCommand::class,
+            EraseCommand::class,
+            TraceCommand::class,
+            NewCommand::class,
+            InitCommand::class,
+            PublishStubsCommand::class,
         ]);
     }
 
     /**
-     * Get the services provided by the provider.
-     *
-     * @return array
+     * @return array<int,class-string>
      */
-    public function provides()
+    public function provides(): array
     {
         return [
-            'command.blueprint.build',
-            'command.blueprint.erase',
-            'command.blueprint.trace',
-            'command.blueprint.new',
-            'command.blueprint.init',
+            BuildCommand::class,
+            EraseCommand::class,
+            TraceCommand::class,
+            NewCommand::class,
+            InitCommand::class,
+            PublishStubsCommand::class,
             Blueprint::class,
         ];
     }
