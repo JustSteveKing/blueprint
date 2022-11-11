@@ -8,12 +8,13 @@
     ],
     "license": "MIT",
     "require": {
-        "doctrine/dbal": "^3.3",
-        "illuminate/console": "^9.0",
-        "illuminate/filesystem": "^9.0",
-        "illuminate/support": "^9.0",
+        "php": "^8.0",
+        "doctrine/dbal": "^3.5",
+        "illuminate/console": "^9.39",
+        "illuminate/filesystem": "^9.39",
+        "illuminate/support": "^v9.39",
         "laravel-shift/faker-registry": "^0.2.0",
-        "symfony/yaml": "^6.0"
+        "symfony/yaml": "^6.1"
     },
     "require-dev": {
         "laravel/pint": "^1.2",
