@@ -3,33 +3,52 @@
 namespace Blueprint;
 
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\Collection;
 
 class Builder
 {
-    public function execute(Blueprint $blueprint, Filesystem $filesystem, string $draft, string $only = '', string $skip = '', $overwriteMigrations = false)
-    {
+    public function execute(
+        Blueprint $blueprint,
+        Filesystem $filesystem,
+        string $draft,
+        string $only = '',
+        string $skip = '',
+        bool $overwriteMigrations = false
+    ): array|Collection {
         $cache = [];
+
         if ($filesystem->exists('.blueprint')) {
-            $cache = $blueprint->parse($filesystem->get('.blueprint'));
+            $cache = $blueprint->parse(
+                content: $filesystem->get('.blueprint'),
+            );
         }
 
-        $contents = $filesystem->get($draft);
-        $using_indexes = preg_match('/^\s+indexes:\R/m', $contents) !== 1;
+        $contents = $filesystem->get(
+            path: $draft,
+        );
 
-        $tokens = $blueprint->parse($contents, $using_indexes);
+        $tokens = $blueprint->parse(
+            content: $contents,
+            strip_dashes: preg_match('/^\s+indexes:\R/m', $contents) !== 1,
+        );
         $tokens['cache'] = $cache['models'] ?? [];
-        $registry = $blueprint->analyze($tokens);
 
-        $only = array_filter(explode(',', $only));
-        $skip = array_filter(explode(',', $skip));
-
-        $generated = $blueprint->generate($registry, $only, $skip, $overwriteMigrations);
+        $generated = $blueprint->generate(
+            tree: $blueprint->analyze(
+                tokens: $tokens,
+            ),
+            only: array_filter(explode(',', $only)),
+            skip: array_filter(explode(',', $skip)),
+            overwriteMigrations: $overwriteMigrations,
+        );
 
         $models = array_merge($tokens['cache'], $tokens['models'] ?? []);
 
         $filesystem->put(
-            '.blueprint',
-            $blueprint->dump($generated + ($models ? ['models' => $models] : []))
+            path: '.blueprint',
+            contents: $blueprint->dump(
+                generated: $generated + ($models ? ['models' => $models] : []),
+            ),
         );
 
         return $generated;
