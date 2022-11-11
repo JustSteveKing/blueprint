@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Blueprint;
 
 use Blueprint\Models\Controller;
